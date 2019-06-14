@@ -7,3 +7,4 @@
 .vscode
 stockbot
 appSettings.json
+appSettings.*.json

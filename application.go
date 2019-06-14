@@ -12,16 +12,22 @@ import (
 	"strings"
 	"time"
 
+	_ "github.com/lib/pq"
+
+	alerts "./alerts"
+	config "./configuration"
 	"./stockbot"
 	"github.com/nlopes/slack"
 )
 
 var theBot *stockbot.Stockbot
+var theAlertManager *alerts.AlertManager
+var priceBreachCheckingTicker *time.Ticker
 
 func main() {
 	logfileName := os.Getenv("LOGFILE")
 	if logfileName == "" {
-		logfileName = "./logs/stockbot.log"
+		logfileName = "./stockbot.log"
 	}
 
 	f, _ := os.Create(logfileName)
@@ -39,7 +45,8 @@ func main() {
 		fmt.Println(quoteInfo[0])
 	}()
 
-	appSettings := theBot.Config()
+	configMgr := new(config.ConfigManager)
+	appSettings := configMgr.Config()
 	log.Printf("Got the app settings: the port is %d\n", appSettings.Port)
 
 	// Get the signing secret from the config
@@ -48,6 +55,10 @@ func main() {
 	if signingSecret == "" {
 		log.Fatal("The signing secret is not in the appSettings.json file")
 	}
+
+	// Create the AlertManager
+	theAlertManager = alerts.CreateAlertManager()
+	defer theAlertManager.Dispose()
 
 	// The HTTP request handler
 	http.HandleFunc("/quote", func(w http.ResponseWriter, r *http.Request) {
@@ -58,33 +69,32 @@ func main() {
 
 		// See which slash command the message contains
 		switch slashCommand.Command {
-		case "/quote":
+		case "/quote", "/quoted":
 			getQuotes(slashCommand, w)
+
+		case "/quote-alert":
+			if strings.ToUpper(slashCommand.Text) == "CHECK" {
+				checkForPriceBreaches(w)
+			} else {
+				theAlertManager.HandleQuoteAlert(slashCommand, w)
+			}
 
 		default:
 			// Unknown command
 			w.WriteHeader(http.StatusInternalServerError)
-			return
 		}
 	})
 
-	http.HandleFunc("/quoted", func(w http.ResponseWriter, r *http.Request) {
-		slashCommand, err := processIncomingRequest(r, w, appSettings.SlackSecretLocal)
-		if err != nil {
-			return
+	priceBreachCheckingTicker = time.NewTicker(time.Duration(appSettings.QuoteCheckInterval) * time.Minute)
+	defer priceBreachCheckingTicker.Stop()
+	go func() {
+		for range priceBreachCheckingTicker.C {
+			fmt.Println("Checking for price breaches at " + time.Now().String())
+			theAlertManager.CheckForPriceBreaches(theBot, func(notification alerts.PriceBreachNotification) {
+				fmt.Println(notification)
+			})
 		}
-
-		// See which slash command the message contains
-		switch slashCommand.Command {
-		case "/quoted":
-			getQuotes(slashCommand, w)
-
-		default:
-			// Unknown command
-			w.WriteHeader(http.StatusInternalServerError)
-			return
-		}
-	})
+	}()
 
 	// Get the port from the config file
 	port := appSettings.Port
@@ -95,6 +105,21 @@ func main() {
 	// Start the web server
 	log.Printf("Listening on port %d\n\n", port)
 	http.ListenAndServe(":"+strconv.Itoa(port), nil)
+}
+
+func respondToSlack(text string, w http.ResponseWriter) {
+	outputPayload := &slack.Msg{Text: text}
+	bytes, err := json.Marshal(outputPayload)
+
+	// Was there a problem marshalling?
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+
+	// Send the output back to Slack
+	w.Header().Set("Content-Type", "application/json")
+	w.Write(bytes)
 }
 
 func processIncomingRequest(r *http.Request, w http.ResponseWriter, signingSecret string) (slashCommand slack.SlashCommand, errs error) {
@@ -135,20 +160,43 @@ func getQuotes(slashCommand slack.SlashCommand, w http.ResponseWriter) {
 		for _, q := range quotes {
 			outputText += fmt.Sprintf("%s: %3.2f\n", strings.ToUpper(q.Symbol), q.LastPrice)
 		}
-		// Create an output message for Slack and turn it into Json
-		outputPayload := &slack.Msg{Text: outputText}
-		bytes, err := json.Marshal(outputPayload)
 
-		// Was there a problem marshalling?
-		if err != nil {
-			w.WriteHeader(http.StatusInternalServerError)
-			return
-		}
-		// Send the output back to Slack
-		w.Header().Set("Content-Type", "application/json")
-		w.Write(bytes)
+		respondToSlack(outputText, w)
 
 	case <-time.After(3 * time.Second):
 		w.WriteHeader(http.StatusInternalServerError)
 	}
+}
+
+func checkForPriceBreaches(w http.ResponseWriter) {
+	// Get the latest quotes
+	prices := theAlertManager.GetQuotesForAlerts(theBot)
+	if prices == nil {
+		respondToSlack("No price breaches", w)
+		return
+	}
+
+	// Save the prices to the database
+	theAlertManager.SavePrices(prices)
+
+	// Check for any price breaches
+	notifications := theAlertManager.GetPriceBreaches()
+
+	// Go through all of the price breaches and notify the Slack user
+	outputText := ""
+	for _, notification := range notifications {
+		//if notification.WebHook == "" {
+		//	continue
+		//}
+
+		outputText += fmt.Sprintf("%s has gone %s the target price of %3.2f. The current price is %3.2f.\n",
+			notification.Symbol, notification.Direction, notification.TargetPrice, notification.CurrentPrice)
+
+		// Do the notification to slack asynchronously
+		go func() {
+			println(outputText)
+		}()
+	}
+
+	respondToSlack(outputText, w)
 }
