@@ -23,6 +23,8 @@ type AppSettings struct {
 	Driver      string
 	APIKeys     map[string]string
 	SlackSecret string
+	Webhook     string
+	DMWebhook   string
 	Port        int
 	Database    struct {
 		User     string

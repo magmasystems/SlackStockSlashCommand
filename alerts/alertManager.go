@@ -2,7 +2,6 @@ package alerts
 
 import (
 	sql "database/sql"
-	"encoding/json"
 	"fmt"
 	"net/http"
 	"strconv"
@@ -11,6 +10,7 @@ import (
 
 	config "../configuration"
 	fr "../framework"
+	slackmessaging "../slackmessaging"
 	stockbot "../stockbot"
 
 	// Need this for postgres
@@ -22,13 +22,14 @@ import (
 type AlertManager struct {
 	fr.Disposable
 	AlertManagerOps
-	db *sql.DB
+	db     *sql.DB
+	config *config.AppSettings
 }
 
 type quoteAlert struct {
 	id            int
 	slackUserName string
-	webHook       string
+	channel       string
 	symbol        string
 	price         float64
 	direction     string
@@ -36,6 +37,7 @@ type quoteAlert struct {
 }
 
 type createAlertParams struct {
+	channel   string
 	symbol    string
 	price     float64
 	direction string
@@ -53,7 +55,7 @@ type PriceInfo struct {
 type PriceBreachNotification struct {
 	SubscriptionID int
 	SlackUserName  string
-	WebHook        string
+	Channel        string
 	Symbol         string
 	TargetPrice    float64
 	CurrentPrice   float64
@@ -85,6 +87,10 @@ func CreateAlertManager() *AlertManager {
 	}
 
 	alertManager.db = db
+
+	configMgr := new(config.ConfigManager)
+	alertManager.config = configMgr.Config()
+
 	return alertManager
 }
 
@@ -107,7 +113,7 @@ func getDbConnectionInfo() string {
 }
 
 // HandleQuoteAlert - parses and dispatches a /quote-alert command from Slack
-func (alertManager *AlertManager) HandleQuoteAlert(slashCommand slack.SlashCommand, w http.ResponseWriter) {
+func (alertManager *AlertManager) HandleQuoteAlert(slashCommand slack.SlashCommand, writer http.ResponseWriter) {
 	outputText := ""
 
 	args := strings.Split(strings.Trim(slashCommand.Text, " "), " ")
@@ -117,7 +123,7 @@ func (alertManager *AlertManager) HandleQuoteAlert(slashCommand slack.SlashComma
 	// If no args were passed, then we just send back a list of all of the alerts that a user has
 	if args[0] != "" {
 		// syntax: /quotealert symbol price [below] [delete]
-		params = &createAlertParams{"", 0.0, "ABOVE", false, false}
+		params = &createAlertParams{"", "", 0.0, "ABOVE", false, false}
 		for i := 0; i < len(args); i = i + 1 {
 			param := strings.ToLower(args[i])
 
@@ -129,6 +135,8 @@ func (alertManager *AlertManager) HandleQuoteAlert(slashCommand slack.SlashComma
 				params.direction = strings.ToUpper(param)
 			} else if strings.ContainsAny(args[i], "0123456789") {
 				params.price, _ = strconv.ParseFloat(param, 32)
+			} else if param[0] == '#' {
+				params.channel = args[i] // if the arg starts with #, assume it is the name of a channel to send the notification to
 			} else {
 				params.symbol = param
 			}
@@ -150,32 +158,22 @@ func (alertManager *AlertManager) HandleQuoteAlert(slashCommand slack.SlashComma
 		outputText = alertManager.listAllAlerts(slashCommand.UserID)
 	}
 
-	// Create an output message for Slack and turn it into Json
-	outputPayload := &slack.Msg{Text: outputText}
-	bytes, err := json.Marshal(outputPayload)
-
-	// Was there a problem marshalling?
-	if err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
-		return
-	}
-	// Send the output back to Slack
-	w.Header().Set("Content-Type", "application/json")
-	w.Write(bytes)
+	// Send the response back to Slack
+	slackmessaging.WriteResponse(writer, outputText)
 }
 
 func (alertManager *AlertManager) listAllAlerts(userID string) string {
 	q := new(quoteAlert)
 	outputText := ""
 
-	sqlStatement := `SELECT id, slackuser, webhook, symbol, targetprice, wasnotified, direction
+	sqlStatement := `SELECT id, slackuser, channel, symbol, targetprice, wasnotified, direction
 	FROM slackstockbot.alertsubscription
 	WHERE slackuser = $1`
 
 	rows, err := alertManager.db.Query(sqlStatement, userID)
 	defer rows.Close()
 	for rows.Next() {
-		err = rows.Scan(&q.id, &q.slackUserName, &q.webHook, &q.symbol, &q.price, &q.wasNotified, &q.direction)
+		err = rows.Scan(&q.id, &q.slackUserName, &q.channel, &q.symbol, &q.price, &q.wasNotified, &q.direction)
 		if err != nil {
 			panic(err)
 		}
@@ -186,7 +184,7 @@ func (alertManager *AlertManager) listAllAlerts(userID string) string {
 }
 
 func (alertManager *AlertManager) getAlert(userID string, params *createAlertParams) *quoteAlert {
-	sqlStatement := `SELECT id, slackuser, webhook, symbol, targetprice, wasnotified, direction
+	sqlStatement := `SELECT id, slackuser, channel, symbol, targetprice, wasnotified, direction
 	FROM slackstockbot.alertsubscription
 	WHERE slackuser = $1 AND symbol = $2 AND direction = $3`
 
@@ -194,7 +192,7 @@ func (alertManager *AlertManager) getAlert(userID string, params *createAlertPar
 
 	q := new(quoteAlert)
 
-	switch err := row.Scan(&q.id, &q.slackUserName, &q.webHook, &q.symbol, &q.price, &q.wasNotified, &q.direction); err {
+	switch err := row.Scan(&q.id, &q.slackUserName, &q.channel, &q.symbol, &q.price, &q.wasNotified, &q.direction); err {
 	case sql.ErrNoRows:
 		return nil
 	case nil:
@@ -224,11 +222,11 @@ func (alertManager *AlertManager) insertNewAlert(userID string, params *createAl
 
 	// https://www.calhoun.io/inserting-records-into-a-postgresql-database-with-gos-database-sql-package/
 	sqlStatement := `
-INSERT INTO slackstockbot.alertsubscription (slackuser, webhook, symbol, targetprice, wasnotified, direction)
-VALUES ($1, $2, $3, $4, $5, $6)
+INSERT INTO slackstockbot.alertsubscription (slackuser, channel, symbol, targetprice, wasnotified, direction)
+VALUES ($1, $2, $3, $4, $5, $6,)
 RETURNING id`
 	id := 0
-	err := alertManager.db.QueryRow(sqlStatement, userID, "", strings.ToUpper(params.symbol), params.price, false, params.direction).Scan(&id)
+	err := alertManager.db.QueryRow(sqlStatement, userID, params.channel, strings.ToUpper(params.symbol), params.price, false, params.direction).Scan(&id)
 	if err != nil {
 		panic(err)
 	}
@@ -273,23 +271,12 @@ func (alertManager *AlertManager) CheckForPriceBreaches(stockbot *stockbot.Stock
 	notifications := alertManager.GetPriceBreaches()
 
 	// Go through all of the price breaches and notify the Slack user
-	outputText := ""
 	for _, notification := range notifications {
-		//if notification.WebHook == "" {
-		//	continue
-		//}
-
-		outputText += fmt.Sprintf("%s has gone %s the target price of %3.2f. The current price is %3.2f.\n",
-			notification.Symbol, notification.Direction, notification.TargetPrice, notification.CurrentPrice)
-
 		// Set the wasNotified field to TRUE on the alert
-		alertManager.setWasNotified(notification.SubscriptionID)
+		//alertManager.setWasNotified(notification.SubscriptionID)
 
-		// Do the notification to slack asynchronously
-		go func() {
-			callback(notification)
-			println(outputText)
-		}()
+		// Do the notification to slack synchronously
+		callback(notification)
 	}
 }
 
@@ -332,6 +319,8 @@ func (alertManager *AlertManager) GetAlertedSymbols() []string {
 		symbols = append(symbols, symbol)
 	}
 
+	fmt.Println("The alerted symbols are:")
+	fmt.Println(symbols)
 	return symbols
 }
 
@@ -353,6 +342,9 @@ func (alertManager *AlertManager) SavePrices(prices []PriceInfo) error {
 	sqlStatement = strings.TrimRight(sqlStatement, ",") + ";"
 
 	_, err = alertManager.db.Exec(sqlStatement)
+
+	fmt.Println("Saving the new prices to the database:")
+	fmt.Println(sqlStatement)
 	return err
 }
 
@@ -363,7 +355,7 @@ func (alertManager *AlertManager) GetPriceBreaches() []PriceBreachNotification {
 
 	// This SQL will compare all of the alerts against the list of current quotes, and identify those alerts
 	// which have price breaches in either direction.
-	sqlStatement := `SELECT a.id, a.slackuser, a.webhook, a.symbol, a.targetprice, a.direction, p.price 
+	sqlStatement := `SELECT a.id, a.slackuser, a.channel, a.symbol, a.targetprice, a.direction, p.price 
 	FROM slackstockbot.alertsubscription a, slackstockbot.stockprice p
 	WHERE a.wasnotified = false AND a.symbol = p.symbol AND
 	      ( (a.direction = 'ABOVE' AND p.price >= a.targetprice) OR (a.direction = 'BELOW' AND p.price <= a.targetprice) );`
@@ -371,11 +363,14 @@ func (alertManager *AlertManager) GetPriceBreaches() []PriceBreachNotification {
 	rows, err := alertManager.db.Query(sqlStatement)
 	defer rows.Close()
 	for rows.Next() {
-		err = rows.Scan(&q.SubscriptionID, &q.SlackUserName, &q.WebHook, &q.Symbol, &q.TargetPrice, &q.Direction, &q.CurrentPrice)
+		err = rows.Scan(&q.SubscriptionID, &q.SlackUserName, &q.Channel, &q.Symbol, &q.TargetPrice, &q.Direction, &q.CurrentPrice)
 		if err != nil {
 			panic(err)
 		}
-		notifications = append(notifications, q)
+
+		if q.CurrentPrice != 0 {
+			notifications = append(notifications, q)
+		}
 	}
 
 	return notifications
