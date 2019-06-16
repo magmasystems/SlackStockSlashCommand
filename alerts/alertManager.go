@@ -3,6 +3,7 @@ package alerts
 import (
 	sql "database/sql"
 	"fmt"
+	"log"
 	"net/http"
 	"strconv"
 	"strings"
@@ -10,6 +11,7 @@ import (
 
 	config "../configuration"
 	fr "../framework"
+	logging "../framework/logging"
 	slackmessaging "../slackmessaging"
 	stockbot "../stockbot"
 
@@ -78,19 +80,31 @@ func CreateAlertManager() *AlertManager {
 
 	db, err := sql.Open("postgres", getDbConnectionInfo())
 	if err != nil {
-		panic(err)
+		logging.Infoln("Alert Manager: cannot open the postgres database")
+		logging.Infoln(fmt.Sprint(err))
+		time.Sleep(time.Duration(1) * time.Second)
+		logging.Panic(err)
 	}
+	logging.Infoln("Alert Manager: was able to open the database.")
 
-	err = db.Ping()
-	if err != nil {
-		panic(err)
-	}
+	/*
+		logging.Infoln("Alert Manager: About to ping the database")
+		err = db.Ping()
+		if err != nil {
+			logging.Infoln("Alert Manager: cannot ping the postgres database")
+			logging.Infoln(fmt.Sprint(err))
+			logging.Panic(err)
+		}
+		logging.Infoln("Alert Manager: was able to ping the database")
+	*/
 
 	alertManager.db = db
 
 	configMgr := new(config.ConfigManager)
 	alertManager.config = configMgr.Config()
+	logging.Infoln("Alert Manager: fetched the config info")
 
+	logging.Infoln("Alert Manager: returning from creating the alert manager")
 	return alertManager
 }
 
@@ -106,8 +120,19 @@ func getDbConnectionInfo() string {
 	configMgr := new(config.ConfigManager)
 	appSettings := configMgr.Config()
 
-	psqlInfo := fmt.Sprintf("host=%s port=%d dbname=%s sslmode=disable",
-		appSettings.Database.Host, appSettings.Database.Port, appSettings.Database.DbName)
+	psqlInfo := fmt.Sprintf("host=%s port=%d dbname=%s", appSettings.Database.Host, appSettings.Database.Port, appSettings.Database.DbName)
+	if appSettings.Database.User != "" {
+		psqlInfo += fmt.Sprintf(" user=%s", appSettings.Database.User)
+	}
+	if appSettings.Database.Password != "" {
+		psqlInfo += fmt.Sprintf(" password=%s", appSettings.Database.Password)
+	}
+	if appSettings.Database.SSL {
+		psqlInfo += fmt.Sprintf(" sslmode=require")
+	}
+
+	// [host=slackstockbot.cfaf3ksbohge.us-east-2.rds.amazonaws.com port=5432 dbname=slackstockbot sslmode=disable user=magmasystems password=magma123]
+	logging.Infof("Alert Manager: The connection info is [%s]\n", psqlInfo)
 
 	return psqlInfo
 }
@@ -115,8 +140,8 @@ func getDbConnectionInfo() string {
 // HandleQuoteAlert - parses and dispatches a /quote-alert command from Slack
 func (alertManager *AlertManager) HandleQuoteAlert(slashCommand slack.SlashCommand, writer http.ResponseWriter) {
 	outputText := ""
-
 	args := strings.Split(strings.Trim(slashCommand.Text, " "), " ")
+	logging.Infof("Alert Manager: Got new Quote Alert with the args [%s]\n", fmt.Sprint(args))
 
 	var params *createAlertParams
 
@@ -143,6 +168,8 @@ func (alertManager *AlertManager) HandleQuoteAlert(slashCommand slack.SlashComma
 		}
 	}
 
+	logging.Infof("Alert Manager: the alert params are [%s]\n", fmt.Sprint(params))
+
 	if params != nil {
 		if params.deleteAll {
 			alertManager.deleteAllAlerts(slashCommand.UserID)
@@ -159,6 +186,7 @@ func (alertManager *AlertManager) HandleQuoteAlert(slashCommand slack.SlashComma
 	}
 
 	// Send the response back to Slack
+	logging.Infoln(outputText)
 	slackmessaging.WriteResponse(writer, outputText)
 }
 
@@ -188,28 +216,36 @@ func (alertManager *AlertManager) getAlert(userID string, params *createAlertPar
 	FROM slackstockbot.alertsubscription
 	WHERE slackuser = $1 AND symbol = $2 AND direction = $3`
 
+	logging.Infof("AlertManager.getAlert: %s\n", sqlStatement)
 	row := alertManager.db.QueryRow(sqlStatement, userID, params.symbol, params.direction)
+	logging.Infof("AlertManager.getAlert: returned with row [%+v]\n", row)
 
 	q := new(quoteAlert)
 
 	switch err := row.Scan(&q.id, &q.slackUserName, &q.channel, &q.symbol, &q.price, &q.wasNotified, &q.direction); err {
 	case sql.ErrNoRows:
+		logging.Infoln("AlertManager.getAlert: no rows returned. Returning nil")
 		return nil
 	case nil:
+		logging.Infoln("AlertManager.getAlert: no errors returned. Returning the alert")
 		return q
 	default:
+		logging.Fatal(err)
 		panic(err)
 	}
 }
 
 func (alertManager *AlertManager) insertNewAlert(userID string, params *createAlertParams) string {
+	logging.Infof("AlertManager.insertNewAlert: Getting alerts for [userID %s, symbol %s]", userID, params.symbol)
 	quoteAlert := alertManager.getAlert(userID, params)
+	logging.Infof("AlertManager.insertNewAlert: Returned with quoteAlert %+v", quoteAlert)
 
 	if quoteAlert != nil {
 		// The record already exists. Just update the fields
 		sqlStatement := `UPDATE slackstockbot.alertsubscription SET targetprice = $1, direction = $2 WHERE id = $3`
 		res, err := alertManager.db.Exec(sqlStatement, params.price, params.direction, quoteAlert.id)
 		if err != nil {
+			logging.Fatal(err)
 			panic(err)
 		}
 
@@ -223,14 +259,17 @@ func (alertManager *AlertManager) insertNewAlert(userID string, params *createAl
 	// https://www.calhoun.io/inserting-records-into-a-postgresql-database-with-gos-database-sql-package/
 	sqlStatement := `
 INSERT INTO slackstockbot.alertsubscription (slackuser, channel, symbol, targetprice, wasnotified, direction)
-VALUES ($1, $2, $3, $4, $5, $6,)
+VALUES ($1, $2, $3, $4, $5, $6)
 RETURNING id`
 	id := 0
+	logging.Infof("AlertManager.insertNewAlert: %s\n", sqlStatement)
 	err := alertManager.db.QueryRow(sqlStatement, userID, params.channel, strings.ToUpper(params.symbol), params.price, false, params.direction).Scan(&id)
+	logging.Infof("AlertManager.insertNewAlert: QueryRow returned with err [%s]\n", fmt.Sprint(err))
 	if err != nil {
-		panic(err)
+		logging.Panic(err)
 	}
 
+	logging.Infof("AlertManager.insertNewAlert: returning id %d\n", id)
 	return strconv.Itoa(id)
 }
 
@@ -273,7 +312,7 @@ func (alertManager *AlertManager) CheckForPriceBreaches(stockbot *stockbot.Stock
 	// Go through all of the price breaches and notify the Slack user
 	for _, notification := range notifications {
 		// Set the wasNotified field to TRUE on the alert
-		//alertManager.setWasNotified(notification.SubscriptionID)
+		alertManager.setWasNotified(notification.SubscriptionID)
 
 		// Do the notification to slack synchronously
 		callback(notification)
@@ -314,13 +353,15 @@ func (alertManager *AlertManager) GetAlertedSymbols() []string {
 	for rows.Next() {
 		err = rows.Scan(&symbol)
 		if err != nil {
+			log.Fatal(err)
 			panic(err)
 		}
 		symbols = append(symbols, symbol)
 	}
 
-	fmt.Println("The alerted symbols are:")
-	fmt.Println(symbols)
+	logging.Infoln("The alerted symbols are:")
+	logging.Infoln(fmt.Sprint(symbols))
+
 	return symbols
 }
 
@@ -329,6 +370,7 @@ func (alertManager *AlertManager) SavePrices(prices []PriceInfo) error {
 	sqlStatement := `DELETE FROM slackstockbot.stockprice;`
 	_, err := alertManager.db.Exec(sqlStatement)
 	if err != nil {
+		log.Fatalln(err)
 		panic(err)
 	}
 
@@ -343,8 +385,9 @@ func (alertManager *AlertManager) SavePrices(prices []PriceInfo) error {
 
 	_, err = alertManager.db.Exec(sqlStatement)
 
-	fmt.Println("Saving the new prices to the database:")
-	fmt.Println(sqlStatement)
+	logging.Infoln("Saving the new prices to the database:")
+	logging.Infoln(sqlStatement)
+
 	return err
 }
 

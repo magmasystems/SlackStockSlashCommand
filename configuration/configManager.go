@@ -32,6 +32,7 @@ type AppSettings struct {
 		Host     string
 		Port     int
 		DbName   string
+		SSL      bool
 	}
 	QuoteCheckInterval int
 }

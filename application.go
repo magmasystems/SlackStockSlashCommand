@@ -13,6 +13,7 @@ import (
 
 	alerts "./alerts"
 	config "./configuration"
+	logging "./framework/logging"
 	slackmessaging "./slackmessaging"
 	"./stockbot"
 	"github.com/nlopes/slack"
@@ -29,11 +30,12 @@ func main() {
 		logfileName = "./stockbot.log"
 	}
 
+	logging.Infof("Application: Creating the logfile [%s]\n", logfileName)
 	f, _ := os.Create(logfileName)
 	defer f.Close()
 	log.SetOutput(f)
 
-	log.Println("About to create the Stockbot")
+	logging.Infoln("Application: About to create the Stockbot")
 
 	theBot = stockbot.CreateStockbot()
 	defer theBot.Close()
@@ -46,24 +48,25 @@ func main() {
 
 	configMgr := new(config.ConfigManager)
 	appSettings = configMgr.Config()
-	log.Printf("Got the app settings: the port is %d\n", appSettings.Port)
+	logging.Infof("Application: Got the app settings: the port is %d\n", appSettings.Port)
 
 	// Get the signing secret from the config
 	var signingSecret string
 	signingSecret = appSettings.SlackSecret
 	if signingSecret == "" {
-		log.Fatal("The signing secret is not in the appSettings.json file")
+		logging.Fatal("Application: The signing secret is not in the appSettings.json file")
 	}
 
 	// Create the AlertManager
+	logging.Infoln("Application: About to create the Alert Manager")
 	theAlertManager = alerts.CreateAlertManager()
 	defer theAlertManager.Dispose()
+	logging.Infoln("Application: Created the Alert Manager")
 
 	// The HTTP request handler
 	http.HandleFunc("/quote", func(w http.ResponseWriter, r *http.Request) {
 		slashCommand, err := slackmessaging.ProcessIncomingSlashCommand(r, w, signingSecret)
-		fmt.Println("The slash command is:")
-		fmt.Println(slashCommand)
+		logging.Infof("The slash command is: [%s]\n", slashCommand)
 		if err != nil {
 			return
 		}
@@ -89,12 +92,14 @@ func main() {
 	//postSlackNotification("UKBM681GV", "This is an unsolicited message from the quote alerter")
 
 	// Create a ticker that will continually check for a price breach
+	logging.Infof("Application: About to create the Price Breach Ticker with interval %d \n", appSettings.QuoteCheckInterval)
 	priceBreachCheckingTicker = time.NewTicker(time.Duration(appSettings.QuoteCheckInterval) * time.Second)
 	defer priceBreachCheckingTicker.Stop()
 
 	// Every time the ticker elapses, we check for a price breach
 	go func() {
 		for range priceBreachCheckingTicker.C {
+			logging.Infoln("Application: Ticker elapsed: checking price breaches")
 			onPriceBreachTickerElapsed()
 		}
 	}()
@@ -106,7 +111,7 @@ func main() {
 	}
 
 	// Start the web server
-	log.Printf("Listening on port %d\n\n", port)
+	logging.Infof("Application: Listening on port %d\n\n", port)
 	http.ListenAndServe(":"+strconv.Itoa(port), nil)
 }
 
@@ -140,8 +145,8 @@ func onPriceBreachTickerElapsed() {
 	fmt.Println("Checking for price breaches at " + time.Now().String())
 
 	theAlertManager.CheckForPriceBreaches(theBot, func(notification alerts.PriceBreachNotification) {
-		fmt.Println("The notification to Slack is:")
-		fmt.Println(notification)
+		logging.Infoln("The notification to Slack is:")
+		logging.Infoln(fmt.Sprint(notification))
 		outputText := fmt.Sprintf("%s has gone %s the target price of %3.2f. The current price is %3.2f.\n",
 			notification.Symbol, notification.Direction, notification.TargetPrice, notification.CurrentPrice)
 		postSlackNotification(notification, outputText)
