@@ -65,44 +65,25 @@ func main() {
 
 	// The HTTP request handler
 	http.HandleFunc("/quote", func(w http.ResponseWriter, r *http.Request) {
-		slashCommand, err := slackmessaging.ProcessIncomingSlashCommand(r, w, signingSecret)
-		logging.Infof("The slash command is: [%s]\n", slashCommand)
-		if err != nil {
-			return
-		}
-
-		// See which slash command the message contains
-		switch slashCommand.Command {
-		case "/quote", "/quoted":
-			getQuotes(slashCommand, w)
-
-		case "/quote-alert", "/quoted-alert":
-			if strings.ToUpper(slashCommand.Text) == "CHECK" {
-				checkForPriceBreaches(w)
-			} else {
-				theAlertManager.HandleQuoteAlert(slashCommand, w)
-			}
-
-		default:
-			// Unknown command
-			w.WriteHeader(http.StatusInternalServerError)
-		}
+		handleHTTPRequest(w, r, signingSecret)
 	})
 
 	//postSlackNotification("UKBM681GV", "This is an unsolicited message from the quote alerter")
 
 	// Create a ticker that will continually check for a price breach
-	logging.Infof("Application: About to create the Price Breach Ticker with interval %d \n", appSettings.QuoteCheckInterval)
-	priceBreachCheckingTicker = time.NewTicker(time.Duration(appSettings.QuoteCheckInterval) * time.Second)
-	defer priceBreachCheckingTicker.Stop()
+	if !appSettings.DisablePriceBreachChecking {
+		logging.Infof("Application: About to create the Price Breach Ticker with interval %d \n", appSettings.QuoteCheckInterval)
+		priceBreachCheckingTicker = time.NewTicker(time.Duration(appSettings.QuoteCheckInterval) * time.Second)
+		defer priceBreachCheckingTicker.Stop()
 
-	// Every time the ticker elapses, we check for a price breach
-	go func() {
-		for range priceBreachCheckingTicker.C {
-			logging.Infoln("Application: Ticker elapsed: checking price breaches")
-			onPriceBreachTickerElapsed()
-		}
-	}()
+		// Every time the ticker elapses, we check for a price breach
+		go func() {
+			for range priceBreachCheckingTicker.C {
+				logging.Infoln("Application: Ticker elapsed: checking price breaches")
+				onPriceBreachTickerElapsed()
+			}
+		}()
+	}
 
 	// Get the port from the config file
 	port := appSettings.Port
@@ -117,6 +98,39 @@ func main() {
 
 func postSlackNotification(notification alerts.PriceBreachNotification, outputText string) {
 	slackmessaging.PostSlackNotification(notification.SlackUserName, notification.Channel, outputText, appSettings)
+}
+
+func handleHTTPRequest(w http.ResponseWriter, r *http.Request, signingSecret string) {
+	slashCommand, err := slackmessaging.ProcessIncomingSlashCommand(r, w, signingSecret)
+	logging.Infof("The slash command is: [%s]\n", slashCommand)
+	if err != nil {
+		return
+	}
+
+	// See which slash command the message contains
+	switch slashCommand.Command {
+	case "/quote", "/quoted":
+		switch strings.ToUpper(slashCommand.Text) {
+		case "HELP":
+			helpQuoteCommand(w)
+		default:
+			getQuotes(slashCommand, w)
+		}
+
+	case "/quote-alert", "/quoted-alert":
+		switch strings.ToUpper(slashCommand.Text) {
+		case "HELP":
+			helpQuoteAlertCommand(w)
+		case "CHECK":
+			checkForPriceBreaches(w)
+		default:
+			theAlertManager.HandleQuoteAlert(slashCommand, w)
+		}
+
+	default:
+		// Unknown command
+		w.WriteHeader(http.StatusInternalServerError)
+	}
 }
 
 func getQuotes(slashCommand slack.SlashCommand, w http.ResponseWriter) {
@@ -181,4 +195,24 @@ func checkForPriceBreaches(w http.ResponseWriter) {
 	}
 
 	slackmessaging.WriteResponse(w, outputText)
+}
+
+func helpQuoteCommand(w http.ResponseWriter) {
+	text := `/quote symbol[,symbol,symbol,...]
+	Retrieves the current price one or more stocks. Each stock can be separated by a comma`
+	slackmessaging.WriteResponse(w, text)
+}
+
+func helpQuoteAlertCommand(w http.ResponseWriter) {
+	text := `/quote-alert [symbol price [below]] [symbol delete] [deleteall] [#channel]
+	Sets up a subscription to a price alert for the specified symbol. 
+	Examples:
+	  /quote-alert - lists all of the alerts you have
+	  /quote-alert MSFT 130 - sends an alert when Microsoft stock reaches $130
+	  /quote-alert MSFT 130 #myalerts - sends an alert  to the #myalert Slack channel when Microsoft stock reaches $130
+	  /quote-alert MSFT 130 BELOW - sends an alert when Microsoft stock goes below $130
+	  /quote-alert MSFT delete - removes the existing alert on MSFT stock that you have subscribed to
+	  /quote-alert deleteall - deletes all alerts that you have
+	`
+	slackmessaging.WriteResponse(w, text)
 }

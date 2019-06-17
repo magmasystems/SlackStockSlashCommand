@@ -332,7 +332,9 @@ func (alertManager *AlertManager) GetQuotesForAlerts(stockbot *stockbot.Stockbot
 		var priceInfos []PriceInfo
 		for _, q := range quotes {
 			pi := PriceInfo{Symbol: strings.ToUpper(q.Symbol), Price: float64(q.LastPrice)}
-			priceInfos = append(priceInfos, pi)
+			if pi.Price > 0 {
+				priceInfos = append(priceInfos, pi)
+			}
 		}
 		return priceInfos
 
@@ -377,7 +379,9 @@ func (alertManager *AlertManager) SavePrices(prices []PriceInfo) error {
 	// Insert multiple values
 	sqlStatement = "INSERT INTO slackstockbot.stockprice (symbol, price, time) VALUES "
 	for _, pi := range prices {
-		sqlStatement += fmt.Sprintf("('%s', %3.2f, current_date),", strings.ToUpper(pi.Symbol), pi.Price)
+		if pi.Price > 0 {
+			sqlStatement += fmt.Sprintf("('%s', %3.2f, current_date),", strings.ToUpper(pi.Symbol), pi.Price)
+		}
 	}
 
 	// Get rid of the trailing comma and append a semicolon to terminate the statement
@@ -400,7 +404,7 @@ func (alertManager *AlertManager) GetPriceBreaches() []PriceBreachNotification {
 	// which have price breaches in either direction.
 	sqlStatement := `SELECT a.id, a.slackuser, a.channel, a.symbol, a.targetprice, a.direction, p.price 
 	FROM slackstockbot.alertsubscription a, slackstockbot.stockprice p
-	WHERE a.wasnotified = false AND a.symbol = p.symbol AND
+	WHERE a.wasnotified = false AND a.symbol = p.symbol AND p.price > 0 AND
 	      ( (a.direction = 'ABOVE' AND p.price >= a.targetprice) OR (a.direction = 'BELOW' AND p.price <= a.targetprice) );`
 
 	rows, err := alertManager.db.Query(sqlStatement)

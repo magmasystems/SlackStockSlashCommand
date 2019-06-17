@@ -34,7 +34,8 @@ type AppSettings struct {
 		DbName   string
 		SSL      bool
 	}
-	QuoteCheckInterval int
+	QuoteCheckInterval         int
+	DisablePriceBreachChecking bool
 }
 
 // Config - get the config settings from appSettings.json
