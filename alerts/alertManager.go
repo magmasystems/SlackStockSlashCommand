@@ -2,6 +2,7 @@ package alerts
 
 import (
 	sql "database/sql"
+	"errors"
 	"fmt"
 	"log"
 	"net/http"
@@ -24,8 +25,9 @@ import (
 type AlertManager struct {
 	fr.Disposable
 	AlertManagerOps
-	db     *sql.DB
-	config *config.AppSettings
+	db       *sql.DB
+	config   *config.AppSettings
+	stockBot *stockbot.Stockbot
 }
 
 type quoteAlert struct {
@@ -75,7 +77,7 @@ type AlertManagerOps interface {
 }
 
 // CreateAlertManager - creates and initializes a new AlertManager
-func CreateAlertManager() *AlertManager {
+func CreateAlertManager(bot *stockbot.Stockbot) *AlertManager {
 	alertManager := new(AlertManager)
 
 	db, err := sql.Open("postgres", getDbConnectionInfo())
@@ -99,6 +101,7 @@ func CreateAlertManager() *AlertManager {
 	*/
 
 	alertManager.db = db
+	alertManager.stockBot = bot
 
 	configMgr := new(config.ConfigManager)
 	alertManager.config = configMgr.Config()
@@ -178,8 +181,12 @@ func (alertManager *AlertManager) HandleQuoteAlert(slashCommand slack.SlashComma
 			alertManager.deleteAlert(slashCommand.UserID, params)
 			outputText = fmt.Sprintf("Alert deleted for user %s", slashCommand.UserName)
 		} else {
-			newID := alertManager.insertNewAlert(slashCommand.UserID, params)
-			outputText = fmt.Sprintf("Alert %s Created for user %s", newID, slashCommand.UserName)
+			newID, err := alertManager.insertNewAlert(slashCommand.UserID, params)
+			if err != nil {
+				outputText = err.Error() // maybe the user request a symbol that is not a stock
+			} else {
+				outputText = fmt.Sprintf("Alert %s Created for user %s", newID, slashCommand.UserName)
+			}
 		}
 	} else {
 		outputText = alertManager.listAllAlerts(slashCommand.UserID)
@@ -235,7 +242,7 @@ func (alertManager *AlertManager) getAlert(userID string, params *createAlertPar
 	}
 }
 
-func (alertManager *AlertManager) insertNewAlert(userID string, params *createAlertParams) string {
+func (alertManager *AlertManager) insertNewAlert(userID string, params *createAlertParams) (string, error) {
 	logging.Infof("AlertManager.insertNewAlert: Getting alerts for [userID %s, symbol %s]", userID, params.symbol)
 	quoteAlert := alertManager.getAlert(userID, params)
 	logging.Infof("AlertManager.insertNewAlert: Returned with quoteAlert %+v", quoteAlert)
@@ -251,9 +258,15 @@ func (alertManager *AlertManager) insertNewAlert(userID string, params *createAl
 
 		rowsUpdated, _ := res.RowsAffected()
 		if rowsUpdated == 1 {
-			return strconv.Itoa(quoteAlert.id)
+			return strconv.Itoa(quoteAlert.id), nil
 		}
-		return "0"
+		return "0", nil
+	}
+
+	// See if the symbol is a valid stock by trying to fetch the current price
+	quoteInfo := alertManager.stockBot.QuoteSingle(params.symbol)
+	if len(quoteInfo) == 0 || quoteInfo[0].LastPrice == 0 {
+		return "", errors.New("The symbol is invalid")
 	}
 
 	// https://www.calhoun.io/inserting-records-into-a-postgresql-database-with-gos-database-sql-package/
@@ -270,7 +283,7 @@ RETURNING id`
 	}
 
 	logging.Infof("AlertManager.insertNewAlert: returning id %d\n", id)
-	return strconv.Itoa(id)
+	return strconv.Itoa(id), nil
 }
 
 func (alertManager *AlertManager) setWasNotified(id int) {

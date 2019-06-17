@@ -59,7 +59,7 @@ func main() {
 
 	// Create the AlertManager
 	logging.Infoln("Application: About to create the Alert Manager")
-	theAlertManager = alerts.CreateAlertManager()
+	theAlertManager = alerts.CreateAlertManager(theBot)
 	defer theAlertManager.Dispose()
 	logging.Infoln("Application: Created the Alert Manager")
 
