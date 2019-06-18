@@ -7,3 +7,7 @@
 .vscode
 stockbot
 appSettings.json
+appSettings.*.json
+Archive.zip
+application
+SlackStockBot

@@ -21,7 +21,6 @@ To run this, you will need to create a file called `appSettings.json` and make s
     },
     "driver": "alphavantage",
     "slackSecret": "[Your app's Slack Secret]",
-    "slackSecretLocal":  "[If you set up a Slack app for local testing, the app's Slack Secret goes here]",
     "port": 5000
 }
 ```

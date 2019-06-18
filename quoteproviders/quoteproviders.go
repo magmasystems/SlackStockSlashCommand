@@ -42,7 +42,7 @@ func (provider BaseQuoteProvider) PrepareURL(quoteURL string, symbol string) str
 	url = strings.Replace(url, "{tomorrow}", sTomorrow, 2)
 	url = strings.Replace(url, "{apiKey}", provider.APIKey, 1)
 
-	// fmt.Println(url)
+	//fmt.Println(url)
 
 	return url
 }
