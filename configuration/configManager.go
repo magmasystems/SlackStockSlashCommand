@@ -62,7 +62,7 @@ func (mgr *ConfigManager) Config() *AppSettings {
 
 	// In case it's omitted, we need a sensible value on the Quote Checking Interval
 	if settings.QuoteCheckInterval == 0 {
-		settings.QuoteCheckInterval = 5
+		settings.QuoteCheckInterval = 600
 	}
 
 	return settings
