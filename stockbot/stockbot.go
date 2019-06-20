@@ -8,7 +8,7 @@ import (
 	"strings"
 	"sync"
 
-	config "../configuration"
+	config "github.com/magmasystems/SlackStockSlashCommand/configuration"
 
 	q "github.com/magmasystems/SlackStockSlashCommand/quoteproviders"
 	av "github.com/magmasystems/SlackStockSlashCommand/quoteproviders/alphavantageprovider"
