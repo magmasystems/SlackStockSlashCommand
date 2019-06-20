@@ -5,7 +5,6 @@
 !.elasticbeanstalk/*.global.yml
 
 .vscode
-stockbot
 appSettings.json
 appSettings.*.json
 Archive.zip
