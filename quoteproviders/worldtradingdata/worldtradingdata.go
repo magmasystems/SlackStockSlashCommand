@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"strconv"
 
-	qp ".."
+	qp "github.com/magmasystems/SlackStockSlashCommand/quoteproviders"
 )
 
 // https://www.worldtradingdata.com/home

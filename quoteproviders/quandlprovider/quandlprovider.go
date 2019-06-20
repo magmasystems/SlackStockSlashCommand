@@ -6,7 +6,7 @@ import (
 	"strconv"
 	"time"
 
-	qp ".."
+	qp "github.com/magmasystems/SlackStockSlashCommand/quoteproviders"
 )
 
 const quoteURL = "https://www.quandl.com/api/v3/datasets/WIKI/{symbol}.json?start_date={today}&end_date={tomorrow}&api_key={apiKey}"

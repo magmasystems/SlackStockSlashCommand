@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"strconv"
 
-	qp ".."
+	qp "github.com/magmasystems/SlackStockSlashCommand/quoteproviders"
 )
 
 // https://www.alphavantage.co

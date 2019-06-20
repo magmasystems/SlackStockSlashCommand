@@ -11,11 +11,11 @@ import (
 
 	_ "github.com/lib/pq"
 
-	alerts "./alerts"
-	config "./configuration"
-	logging "./framework/logging"
-	slackmessaging "./slackmessaging"
-	"./stockbot"
+	alerts "github.com/magmasystems/SlackStockSlashCommand/alerts"
+	config "github.com/magmasystems/SlackStockSlashCommand/configuration"
+	logging "github.com/magmasystems/SlackStockSlashCommand/framework/logging"
+	slackmessaging "github.com/magmasystems/SlackStockSlashCommand/slackmessaging"
+	"github.com/magmasystems/SlackStockSlashCommand/stockbot"
 	"github.com/nlopes/slack"
 )
 
