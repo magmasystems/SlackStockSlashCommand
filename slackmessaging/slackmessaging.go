@@ -12,7 +12,7 @@ import (
 	"strings"
 	"time"
 
-	config "../configuration"
+	config "github.com/magmasystems/SlackStockSlashCommand/configuration"
 	slack "github.com/nlopes/slack"
 )
 

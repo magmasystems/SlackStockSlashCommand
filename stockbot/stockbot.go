@@ -10,10 +10,10 @@ import (
 
 	config "../configuration"
 
-	q "../quoteproviders"
-	av "../quoteproviders/alphavantageprovider"
-	quandl "../quoteproviders/quandlprovider"
-	wtd "../quoteproviders/worldtradingdata"
+	q "github.com/magmasystems/SlackStockSlashCommand/quoteproviders"
+	av "github.com/magmasystems/SlackStockSlashCommand/quoteproviders/alphavantageprovider"
+	quandl "github.com/magmasystems/SlackStockSlashCommand/quoteproviders/quandlprovider"
+	wtd "github.com/magmasystems/SlackStockSlashCommand/quoteproviders/worldtradingdata"
 )
 
 // QuoteInfo - contains info about a quote

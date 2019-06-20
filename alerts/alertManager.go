@@ -10,11 +10,11 @@ import (
 	"strings"
 	"time"
 
-	config "../configuration"
-	fr "../framework"
-	logging "../framework/logging"
-	slackmessaging "../slackmessaging"
-	stockbot "../stockbot"
+	config "github.com/magmasystems/SlackStockSlashCommand/configuration"
+	fr "github.com/magmasystems/SlackStockSlashCommand/framework"
+	logging "github.com/magmasystems/SlackStockSlashCommand/framework/logging"
+	slackmessaging "github.com/magmasystems/SlackStockSlashCommand/slackmessaging"
+	stockbot "github.com/magmasystems/SlackStockSlashCommand/stockbot"
 
 	// Need this for postgres
 	_ "github.com/lib/pq"
