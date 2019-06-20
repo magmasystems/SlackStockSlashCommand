@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"strconv"
 
-	qp "../quoteproviders"
+	qp ".."
 )
 
 // https://www.alphavantage.co

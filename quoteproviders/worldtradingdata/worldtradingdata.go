@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"strconv"
 
-	qp "../quoteproviders"
+	qp ".."
 )
 
 // https://www.worldtradingdata.com/home

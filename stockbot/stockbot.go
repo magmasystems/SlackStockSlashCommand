@@ -10,10 +10,10 @@ import (
 
 	config "../configuration"
 
-	av "../alphavantageprovider"
-	quandl "../quandlprovider"
 	q "../quoteproviders"
-	wtd "../worldtradingdata"
+	av "../quoteproviders/alphavantageprovider"
+	quandl "../quoteproviders/quandlprovider"
+	wtd "../quoteproviders/worldtradingdata"
 )
 
 // QuoteInfo - contains info about a quote
