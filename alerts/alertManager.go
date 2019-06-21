@@ -209,6 +209,12 @@ func (alertManager *AlertManager) listAllAlerts(userID string) string {
 
 	rows, err := alertManager.db.Query(sqlStatement, userID)
 	defer rows.Close()
+
+	if err != nil {
+		logging.Infoln(err.Error())
+		return ""
+	}
+
 	for rows.Next() {
 		err = rows.Scan(&q.id, &q.slackUserName, &q.channel, &q.symbol, &q.price, &q.wasNotified, &q.direction)
 		if err != nil {
