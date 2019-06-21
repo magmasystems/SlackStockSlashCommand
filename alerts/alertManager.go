@@ -132,6 +132,8 @@ func getDbConnectionInfo() string {
 	}
 	if appSettings.Database.SSL {
 		psqlInfo += fmt.Sprintf(" sslmode=require")
+	} else {
+		psqlInfo += fmt.Sprintf(" sslmode=disable")
 	}
 
 	// [host=slackstockbot.cfaf3ksbohge.us-east-2.rds.amazonaws.com port=5432 dbname=slackstockbot sslmode=disable user=magmasystems password=magma123]
@@ -364,11 +366,16 @@ func (alertManager *AlertManager) GetAlertedSymbols() []string {
 	sqlStatement := `SELECT DISTINCT symbol FROM slackstockbot.alertsubscription ORDER BY symbol;`
 
 	rows, err := alertManager.db.Query(sqlStatement)
+	if err != nil {
+		logging.Infoln(err.Error())
+		return symbols
+	}
+
 	defer rows.Close()
 	for rows.Next() {
 		err = rows.Scan(&symbol)
 		if err != nil {
-			log.Fatal(err)
+			logging.Fatal(err)
 			panic(err)
 		}
 		symbols = append(symbols, symbol)
