@@ -132,6 +132,8 @@ func getDbConnectionInfo() string {
 	}
 	if appSettings.Database.SSL {
 		psqlInfo += fmt.Sprintf(" sslmode=require")
+	} else {
+		psqlInfo += fmt.Sprintf(" sslmode=disable")
 	}
 
 	// [host=slackstockbot.cfaf3ksbohge.us-east-2.rds.amazonaws.com port=5432 dbname=slackstockbot sslmode=disable user=magmasystems password=magma123]
