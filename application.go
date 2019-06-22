@@ -185,16 +185,16 @@ func checkForPriceBreaches(w http.ResponseWriter) {
 	// Go through all of the price breaches and notify the Slack user
 	outputText := ""
 	for _, notification := range notifications {
-		outputText += fmt.Sprintf("%s has gone %s the target price of %3.2f. The current price is %3.2f.\n",
+		outputText = fmt.Sprintf("%s has gone %s the target price of %3.2f. The current price is %3.2f.\n",
 			notification.Symbol, notification.Direction, notification.TargetPrice, notification.CurrentPrice)
 
-		// Do the notification to slack asynchronously
+		// Do the notification to slack synchronously
+		postSlackNotification(notification, outputText)
+
 		go func() {
 			println(outputText)
 		}()
 	}
-
-	slackmessaging.WriteResponse(w, outputText)
 }
 
 func helpQuoteCommand(w http.ResponseWriter) {
