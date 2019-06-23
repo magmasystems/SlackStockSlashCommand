@@ -2,6 +2,7 @@
   <dictionary name="magmasystems">
     <words>
       <w>infof</w>
+      <w>infoln</w>
     </words>
   </dictionary>
 </component>

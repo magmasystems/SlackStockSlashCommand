@@ -1,7 +1,7 @@
 package alerts
 
 import (
-	sql "database/sql"
+	"database/sql"
 	"errors"
 	"fmt"
 	"log"
@@ -12,9 +12,9 @@ import (
 
 	config "github.com/magmasystems/SlackStockSlashCommand/configuration"
 	fr "github.com/magmasystems/SlackStockSlashCommand/framework"
-	logging "github.com/magmasystems/SlackStockSlashCommand/framework/logging"
-	slackmessaging "github.com/magmasystems/SlackStockSlashCommand/slackmessaging"
-	stockbot "github.com/magmasystems/SlackStockSlashCommand/stockbot"
+	"github.com/magmasystems/SlackStockSlashCommand/framework/logging"
+	"github.com/magmasystems/SlackStockSlashCommand/slackmessaging"
+	"github.com/magmasystems/SlackStockSlashCommand/stockbot"
 
 	// Need this for postgres
 	_ "github.com/lib/pq"
@@ -399,7 +399,6 @@ func (alertManager *AlertManager) SavePrices(prices []PriceInfo) error {
 	_, err := alertManager.db.Exec(sqlStatement)
 	if err != nil {
 		log.Fatalln(err)
-		panic(err)
 	}
 
 	// Insert multiple values

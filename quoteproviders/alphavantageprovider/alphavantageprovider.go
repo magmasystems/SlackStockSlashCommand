@@ -33,7 +33,10 @@ func (provider AVQuoteProvider) FetchQuote(symbol string) float32 {
 
 	if err == nil {
 		data := new(quoteData)
-		json.Unmarshal(payload, &data)
+		err = json.Unmarshal(payload, &data)
+		if err != nil {
+			return 0
+		}
 		//fmt.Println(data)
 
 		f, _ := strconv.ParseFloat(data.GlobalQuote.Price, 32)

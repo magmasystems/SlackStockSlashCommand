@@ -43,18 +43,21 @@ func (mgr *ConfigManager) Config() *AppSettings {
 	appSettingsFileName := "appSettings.json"
 
 	// See if there is an "env" argument on the command line. If so, it can point to another config file.
-	env := getArg("env", "")
-	if env != "" {
+	if env := getArg("env", ""); env != "" {
 		s := fmt.Sprintf("appSettings.%s.json", env)
 		// see if this config file exists
 		if _, err := os.Stat(s); err == nil {
 			appSettingsFileName = s
+		} else if _, err = os.Stat("../" + s); err == nil {
+			appSettingsFileName = "../" + s
 		}
 	}
 
 	bytes, err := ioutil.ReadFile(appSettingsFileName)
 	if err != nil {
-		log.Fatalf("cannot find the %s file", appSettingsFileName)
+		if bytes, err = ioutil.ReadFile("../" + appSettingsFileName); err != nil {
+			log.Fatalf("cannot find the %s file", appSettingsFileName)
+		}
 	}
 
 	settings := new(AppSettings)

@@ -8,13 +8,19 @@ import (
 	"io/ioutil"
 	"log"
 	"net/http"
-	"strconv"
 	"strings"
-	"time"
 
 	config "github.com/magmasystems/SlackStockSlashCommand/configuration"
-	slack "github.com/nlopes/slack"
+	"github.com/nlopes/slack"
 )
+
+var appSettings *config.AppSettings
+
+func init() {
+	// Fetch the appSettings when we load this, because we need to get the Webhooks
+	configMgr := new(config.ConfigManager)
+	appSettings = configMgr.Config()
+}
 
 // ProcessIncomingSlashCommand - reads the incoming request and create a Slash Command
 func ProcessIncomingSlashCommand(r *http.Request, w http.ResponseWriter, signingSecret string) (slashCommand slack.SlashCommand, errs error) {
@@ -44,7 +50,7 @@ func ProcessIncomingSlashCommand(r *http.Request, w http.ResponseWriter, signing
 }
 
 // WriteResponse - writes text to a ResponseWriter that Slack will receive
-func WriteResponse(writer http.ResponseWriter, outputText string) {
+func WriteResponse(writer http.ResponseWriter, outputText string) error {
 	// Create an output message for Slack and turn it into Json
 	outputPayload := &slack.Msg{Text: outputText, ResponseType: "ephemeral"}
 	jsonValue, err := json.Marshal(outputPayload)
@@ -52,44 +58,33 @@ func WriteResponse(writer http.ResponseWriter, outputText string) {
 	// Was there a problem marshalling?
 	if err != nil {
 		writer.WriteHeader(http.StatusInternalServerError)
-		return
+		return err
 	}
 
 	// Send the output back to Slack
 	writer.Header().Set("Content-Type", "application/json")
-	writer.Write(jsonValue)
+	_, err = writer.Write(jsonValue)
+	return err
 }
 
 // PostSlackNotification - posts a message to either a Slack Channel or to a user directly
-func PostSlackNotification(slackUserName string, slackChannel string, outputText string, appSettings *config.AppSettings) {
-	/*
-		outputPayload := &slack.Msg{Text: outputText, User: slackUserName}
-		jsonValue, _ := json.Marshal(outputPayload)
-
-		webhook := getWebhook(slackChannel, appSettings)
-
-		_, err := http.Post(webhook, "application/json", bytes.NewBuffer(jsonValue))
-		if err != nil {
-			fmt.Println(err)
-		}
-	*/
-
+func PostSlackNotification(slackUserName string, slackChannel string, outputText string) {
 	// text := fmt.Sprintf("<!channel> %s :smile:\nSee <https://api.slack.com/docs/message-formatting#linking_to_channels_and_users>", outputText)
 
-	attachment := slack.Attachment{
-		Color:    "good",
-		Fallback: "You successfully posted by Incoming Webhook URL!",
-		//AuthorName:    "nlopes/slack",
-		//AuthorSubname: "github.com",
-		//AuthorLink:    "https://github.com/nlopes/slack",
-		//AuthorIcon:    "https://avatars2.githubusercontent.com/u/652790",
-		Text: outputText,
-		//Footer:        "slack api",
-		//FooterIcon:    "https://platform.slack-edge.com/img/default_application_icon.png",
-		Ts: json.Number(strconv.FormatInt(time.Now().Unix(), 10)),
+	format := SlackMessageFormat{
+		Color:   "good",
+		Text:    outputText,
+		UseTime: true,
 	}
+
+	PostSlackNotificationFormatted(slackUserName, slackChannel, format)
+}
+
+// PostSlackNotificationFormatted - posts a message to Slack, but accepts a Slack Attachment as an argument.
+// This gives the user the ability to pass in a format that has lots of options.
+func PostSlackNotificationFormatted(slackUserName string, slackChannel string, format SlackMessageFormat) {
 	msg := slack.WebhookMessage{
-		Attachments: []slack.Attachment{attachment},
+		Attachments: []slack.Attachment{*format.ToAttachment()},
 		Username:    slackUserName,
 		Channel:     slackChannel,
 	}

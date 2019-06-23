@@ -11,18 +11,20 @@ import (
 
 	_ "github.com/lib/pq"
 
-	alerts "github.com/magmasystems/SlackStockSlashCommand/alerts"
+	"github.com/magmasystems/SlackStockSlashCommand/alerts"
 	config "github.com/magmasystems/SlackStockSlashCommand/configuration"
-	logging "github.com/magmasystems/SlackStockSlashCommand/framework/logging"
-	slackmessaging "github.com/magmasystems/SlackStockSlashCommand/slackmessaging"
+	"github.com/magmasystems/SlackStockSlashCommand/framework/logging"
+	"github.com/magmasystems/SlackStockSlashCommand/slackmessaging"
 	"github.com/magmasystems/SlackStockSlashCommand/stockbot"
 	"github.com/nlopes/slack"
 )
 
-var theBot *stockbot.Stockbot
-var theAlertManager *alerts.AlertManager
-var priceBreachCheckingTicker *time.Ticker
-var appSettings *config.AppSettings
+var (
+	theBot                    *stockbot.Stockbot
+	theAlertManager           *alerts.AlertManager
+	priceBreachCheckingTicker *time.Ticker
+	appSettings               *config.AppSettings
+)
 
 func main() {
 	logfileName := os.Getenv("LOGFILE")
@@ -97,7 +99,18 @@ func main() {
 }
 
 func postSlackNotification(notification alerts.PriceBreachNotification, outputText string) {
-	slackmessaging.PostSlackNotification(notification.SlackUserName, notification.Channel, outputText, appSettings)
+	format := slackmessaging.SlackMessageFormat{
+		Color:   "good",
+		Text:    outputText,
+		Title:   "Price Target Reached",
+		UseTime: true,
+	}
+
+	if notification.Direction == "BELOW" {
+		format.Color = "#FF0000"
+	}
+
+	slackmessaging.PostSlackNotificationFormatted(notification.SlackUserName, notification.Channel, format)
 }
 
 func handleHTTPRequest(w http.ResponseWriter, r *http.Request, signingSecret string) {

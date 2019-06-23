@@ -36,7 +36,4 @@ func Panic(err error) {
 	fmt.Printf("Fatal error: %s", fmt.Sprint(err))
 	log.Printf("%s ", time.Now().Format(time.RFC3339))
 	log.Fatal(fmt.Sprint(err))
-
-	time.Sleep(time.Duration(1) * time.Second)
-	panic(err)
 }

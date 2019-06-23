@@ -1,10 +1,7 @@
 package stockbot
 
 import (
-	"bufio"
 	"errors"
-	"fmt"
-	"os"
 	"strings"
 	"sync"
 
@@ -36,23 +33,6 @@ type BotOps interface {
 type Stockbot struct {
 	quoteProvider q.QuoteProvider
 	QuoteReceived chan []QuoteInfo
-}
-
-func main() {
-	bot := CreateStockbot()
-	fmt.Println(bot.QuoteSingle("MSFT"))
-
-	scanner := bufio.NewScanner(os.Stdin)
-	print("Enter the symbol: ")
-	for scanner.Scan() {
-		symbol := scanner.Text()
-		if len(symbol) == 0 {
-			break
-		}
-		price := bot.QuoteSingle(symbol)
-		fmt.Println(price)
-		print("Enter the symbol: ")
-	}
 }
 
 // CreateStockbot - creates a new instance of the StockBot
