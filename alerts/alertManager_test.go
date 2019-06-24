@@ -5,8 +5,8 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/magmasystems/SlackStockSlashCommand/stockbot"
 	_ "github.com/lib/pq"
+	"github.com/magmasystems/SlackStockSlashCommand/stockbot"
 	"github.com/nlopes/slack"
 )
 
@@ -40,22 +40,6 @@ func TestAlertManager_Dispose(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			tt.alertManager.Dispose()
-		})
-	}
-}
-
-func Test_getDbConnectionInfo(t *testing.T) {
-	tests := []struct {
-		name string
-		want string
-	}{
-		// TODO: Add test cases.
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			if got := getDbConnectionInfo(); got != tt.want {
-				t.Errorf("getDbConnectionInfo() = %v, want %v", got, tt.want)
-			}
 		})
 	}
 }

@@ -85,8 +85,6 @@ func PostSlackNotification(slackUserName string, slackChannel string, outputText
 func PostSlackNotificationFormatted(slackUserName string, slackChannel string, format SlackMessageFormat) {
 	msg := slack.WebhookMessage{
 		Attachments: []slack.Attachment{*format.ToAttachment()},
-		Username:    slackUserName,
-		Channel:     slackChannel,
 	}
 
 	webhook := getWebhook(slackChannel, appSettings)
